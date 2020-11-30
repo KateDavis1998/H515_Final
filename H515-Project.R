@@ -11,6 +11,7 @@ library(glmnet)
 library(rpart)
 library(rpart.plot)
 library(randomForest)
+library(e1071)
 
 #Set WD
 #setwd('/Users/paigescott/Documents/IUPUI/INFO-H515/Project') #Paige
@@ -140,22 +141,23 @@ falsePos
 
 #Lasso/Ridge setup
 #note - these take a long time to run, and have negative osr^2 
-x.train=model.matrix(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+examcode+modality+priority+orgcode+eio+sect+radiologist,data=scans.min.train)
+x.train=model.matrix(cf_std ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+examcode+modality+priority+orgcode+eio+sect+radiologist,data=scans.min.train)
 #x.train=model.matrix(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority+orgcode+eio+sect,data=scans.min.train)
-y.train=scans.min.train$cf_stdbin
-x.test=model.matrix(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+examcode+modality+priority+orgcode+eio+sect+radiologist,data=scans.min.test) 
+y.train=scans.min.train$cf_std
+x.test=model.matrix(cf_std ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+examcode+modality+priority+orgcode+eio+sect+radiologist,data=scans.min.test) 
 #x.test=model.matrix(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority+orgcode+eio+sect,data=scans.min.test) 
-y.test=scans.min.test$cf_stdbin
+y.test=scans.min.test$cf_std
 all.lambdas <- c(exp(seq(15, -10, -.1)))
 
-#Ridge
+#Ridge use binomial for binary predictor otherwise don't
+#ridge.cv=cv.glmnet(x = x.train, y = y.train, alpha=0, lambda=all.lambdas, family = "binomial")
 ridge.cv=cv.glmnet(x = x.train, y = y.train, alpha=0, lambda=all.lambdas, family = "binomial")
 plot(ridge.cv)
 best.lambda.ridge <- ridge.cv$lambda.min
 ridge.mse.min <- ridge.cv$cvm[ridge.cv$lambda == ridge.cv$lambda.min]
 ridge.mse.min
 
-ridge.tr=glmnet(x = x.train, y = y.train, alpha=0, lambda=best.lambda.ridge, family = "binomial")
+ridge.tr=glmnet(x = x.train, y = y.train, alpha=0, lambda=best.lambda.ridge)
 ridge.tr$beta # all nonzero
 ridge.r2 = ridge.tr$dev.ratio
 ridge.r2
@@ -163,12 +165,15 @@ ridge.pred = predict(ridge.tr, newx=x.test, type="response")
 SSE<-sum((ridge.pred-as.numeric(y.test))^2)
 SST<-sum((mean(as.numeric(y.train))-as.numeric(y.test))^2)
 ridge.OSR2<-1-SSE/SST
-ridge.OSR2 #This is negative, so it fits worse than a horizontal line :/
+ridge.OSR2 
+#This is negative for binary, so it fits worse than a horizontal line :/
+#0.04562298 for the nonbinary version
 ridge.OSMSE<-SSE/nrow(scans.min.test)
 ridge.OSMSE
 
-#Lasso
-lasso.cv=cv.glmnet(x = x.train, y = y.train, alpha=1, lambda=all.lambdas, family = "binomial")
+#Lasso use binomial for binary predictor otherwise don't
+#lasso.cv=cv.glmnet(x = x.train, y = y.train, alpha=1, lambda=all.lambdas, family = "binomial")
+lasso.cv=cv.glmnet(x = x.train, y = y.train, alpha=1, lambda=all.lambdas)
 plot(lasso.cv)
 best.lambda.lasso <- lasso.cv$lambda.min
 lasso.mse.min <- lasso.cv$cvm[lasso.cv$lambda == lasso.cv$lambda.min]
@@ -185,18 +190,29 @@ lasso.pred = predict(lasso.cv, newx=x.test, s = "lambda.min", type="response")
 SSE<-sum((lasso.pred-as.numeric(y.test))^2)
 SST<-sum((mean(as.numeric(y.train))-as.numeric(y.test))^2)
 lasso.OSR2<-1-SSE/SST
-lasso.OSR2 #This is negative, so it fits worse than a horizontal line :/
+lasso.OSR2 
+#This is negative for binary, so it fits worse than a horizontal line :/
+#0.0242218 for nonbinary
 lasso.OSMSE<-SSE/nrow(scans.min.test)
 lasso.OSMSE
 
 
 
 #CART/Random Forest setup
-#also negative :/
-x.train = scans.min.train[,-c(1,2,16,17)]
-x.test = scans.min.test[,-c(1,2,16,17)]
+#also negative for binary :/
+#for binary use colum 18, for nonbinary use column 17
+
+#binary train/test
+x.train = scans.min.train[,-c(1,2,16,17,18)]
+x.test = scans.min.test[,-c(1,2,16,17,18)]
 y.train = scans.min.train[,ncol(scans.min.train)]
 y.test = scans.min.test[,ncol(scans.min.train)]
+
+#non binary train/test
+x.train = scans.min.train[,-c(1,2,16,17,18)]
+x.test = scans.min.test[,-c(1,2,16,17,18)]
+y.train = scans.min.train[,ncol(scans.min.train)-1]
+y.test = scans.min.test[,ncol(scans.min.train)-1]
 
 #CART
 train.cart = train(x.train,y.train,method="rpart",
@@ -221,7 +237,7 @@ train.cart$results
 #removing variables with more than 53 categories..
 x.train = x.train[,-c(7,13)]
 x.test = x.test[,-c(7,13)]
-rf = randomForest(cf_stdbin~shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority+orgcode+eio+sect, data=scans.min.train, mtry = 3, nodesize=25, ntree = 80)
+rf = randomForest(cf_std~shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority+orgcode+eio+sect, data=scans.min.train, mtry = 3, nodesize=25, ntree = 80)
 train.rf.oob = train(x.train, y.train, method="rf", tuneGrid=data.frame(mtry=1:10),
                      trControl=trainControl(method="oob"))
 
@@ -232,20 +248,94 @@ plot(train.rf.oob$results$mtry,train.rf.oob$results$Rsquared,
 #wow this plot is bad
 
 #the train function stores the resulting final model
-#this doesn't work, not sure why
-# mod.rf = train.rf.oob$finalModel
-# mod.rf$mse
-# 
-# sqrt(tail(mod.rf$mse, 1)) #In Sample RMSE
-# r2.is.rf = 1-sum((y.train - mod.rf$predicted)^2)/sum((y.train - mean(y.train))^2) #in sample R2?
-# r2.is.rf
-# error.is.rf = y.train - mod.rf$predicted
-# sqrt(mean(error.is.rf^2)) #ISRMSE double check
-# sqrt(mean(abs(error.is.rf))) #ISMAE
-# 
-# pred.rf = predict(mod.rf, newdata=ames.test)
-# r2.rf = 1-sum((y.test - pred.rf)^2)/sum((y.test - mean(y.train))^2)
-# r2.rf
-# error.rf = y.test - pred.rf
-# sqrt(mean(error.rf^2)) #OSRMSE
-# sqrt(mean(abs(error.rf))) #OSMAE
+#this doesn't work for binary, not sure why
+mod.rf = train.rf.oob$finalModel
+mod.rf$mse
+
+sqrt(tail(mod.rf$mse, 1)) #In Sample RMSE
+r2.is.rf = 1-sum((y.train - mod.rf$predicted)^2)/sum((y.train - mean(y.train))^2) #in sample R2?
+r2.is.rf #0.06324868
+error.is.rf = y.train - mod.rf$predicted
+sqrt(mean(error.is.rf^2)) #ISRMSE double check
+sqrt(mean(abs(error.is.rf))) #ISMAE
+
+pred.rf = predict(mod.rf, newdata=x.test)
+r2.rf = 1-sum((y.test - pred.rf)^2)/sum((y.test - mean(y.train))^2)
+r2.rf #0.09604545
+error.rf = y.test - pred.rf
+sqrt(mean(error.rf^2)) #OSRMSE 0.8211722
+sqrt(mean(abs(error.rf))) #OSMAE 0.3473746
+
+
+
+
+
+#Trying some SVM to predict binary
+svm.train = scans.min.train[,-c(1,2,18)]
+svm.test = scans.min.test[,-c(1,2,18)]
+
+#linear
+svml <- svm(cf_stdbin~., data = svm.train, kernel = "linear",
+               cost = 0.01, scale = FALSE)
+summary(svml)
+table(predict=predict(svml, svm.train), truth=svm.train$cf_stdbin) #train error
+(0)/nrow(svm.train) #train error rate of 0?
+table(predict=predict(svml, svm.test), truth=svm.test$cf_stdbin) #test error
+(0)/nrow(svm.train) #test error rate of 0?
+
+#the cost=0.01 model had 0 train/test errors but below is code for tuning in case I really messed up above
+#this takes a long time to run
+tuneModels<-tune(svm,cf_stdbin~., data = svm.train, kernel = "linear",
+                 ranges=list(cost=c(.01,.05,.1,.5,1,2,3,4,5,6,7,8,9,10)))
+summary(tuneModels)
+tuneModels$best.model #all models have 0 error
+bestLin=tuneModels$best.model
+table(predict=predict(bestLin, svm.train), truth=svm.train$cf_stdbin) #train error
+(0)/nrow(svm.train) #train error rate 0
+table(predict=predict(bestLin, svm.test), truth=svm.test$cf_stdbin) #test error
+(0)/nrow(svm.test) #test error rate 0
+
+#poly
+svmp <- svm(cf_stdbin~., data = svm.train, kernel = "polynomial",
+            cost = 0.01, scale = FALSE)
+summary(svmp)
+table(predict=predict(svmp, svm.train), truth=svm.train$cf_stdbin) #train error
+(685+0)/nrow(svm.train) #train error rate of 0.0303
+table(predict=predict(svmp, svm.test), truth=svm.test$cf_stdbin) #test error
+(293+0)/nrow(svm.train) #test error rate of 0.129
+
+#radial
+svmr <- svm(cf_stdbin~., data = svm.train, kernel = "radial",
+            cost = 0.01, scale = FALSE)
+summary(svmr)
+table(predict=predict(svmr, svm.train), truth=svm.train$cf_stdbin) #train error
+(690+0)/nrow(svm.train) #train error rate of 0.0305
+table(predict=predict(svmr, svm.test), truth=svm.test$cf_stdbin) #test error
+(295+0)/nrow(svm.train) #test error rate of 0.01305
+
+
+head(svm.train)
+#Trying some SVM to predict nonbinary
+svm.train = scans.min.train[,-c(1,2,17)]
+svm.test = scans.min.test[,-c(1,2,17)]
+
+#linear
+svml <- svm(cf_std~., data = svm.train, kernel = "linear", method="C-classification", cost = 0.01, scale = FALSE)
+summary(svml)
+predict=predict(svml, svm.test) #test error
+xtab <- table(svm.test$cf_std, predict)
+xtab #all predicted as 0
+
+#poly
+svmp <- svm(cf_std~., data = svm.train, kernel = "polynomial", method="C-classification", cost = 0.01, scale = FALSE)
+summary(svmp)
+predict=predict(svmp, svm.test) #test error
+xtab <- table(svm.test$cf_std, predict)
+xtab #also predicts everything as a 0
+
+#radial
+svmr <- svm(cf_std~., data = svm.train, kernel = "radial", method="C-classification", cost = 0.01, scale = FALSE)
+summary(svmr)
+predict=predict(svmr, svm.test) #test error
+xtab <- table(svm.test$cf_std, predict)
+xtab #also predicts everything as a 0
