@@ -416,3 +416,4 @@ summary(svmparp)
 pred = predict(svmparp, svm.test) #test error
 xtab <- table(svm.test$cf_std, pred)
 xtab #all predicted as 0
+
