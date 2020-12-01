@@ -279,7 +279,7 @@ svm.test = scans.min.test[,-c(1,2,18)]
 
 #linear
 svml <- svm(cf_stdbin~., data = svm.train, kernel = "linear",
-               cost = 0.01, scale = FALSE)
+            cost = 0.01, scale = FALSE)
 summary(svml)
 table(predict=predict(svml, svm.train), truth=svm.train$cf_stdbin) #train error
 (0)/nrow(svm.train) #train error rate of 0?
@@ -349,11 +349,13 @@ xtab #also predicts everything as a 0
 #why not use subsampling for SVM?
 #using the parallelSVM library to speed up this process
 #trying cf_stdbin first
+svm.train = scans.min.train[,-c(1,2,18)]
+svm.test = scans.min.test[,-c(1,2,18)]
 
 #Linear
 svmparl <- parallelSVM(cf_stdbin~., data = svm.train[,-1],numberCores = detectCores(), kernel = "linear",
-                      scale = FALSE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
-                      cross = 10, seed = 1234)
+                       scale = FALSE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
+                       cross = 10, seed = 1234)
 summary(svmparl)
 pred.train=predict(svmparl, svm.train) #train error
 table(pred.train, truth=svm.train$cf_stdbin) #train error
@@ -417,3 +419,38 @@ pred = predict(svmparp, svm.test) #test error
 xtab <- table(svm.test$cf_std, pred)
 xtab #all predicted as 0
 
+
+
+#https://rstudio-pubs-static.s3.amazonaws.com/297865_ad1319133fce473e83220af6c7e97b30.html
+#install.packages("performanceEstimation")
+#install.packages("DMwR")
+library(performanceEstimation)
+library(lattice)
+library(DMwR)
+
+#trying stdbin first
+svm.train = scans.min.train[,-c(1,2,18)]
+svm.test = scans.min.test[,-c(1,2,18)]
+
+res_sub <- performanceEstimation(
+  PredTask(cf_stdbin ~ .,svm.train),
+  c(workflowVariants(learner=c("svm"),learner.pars=list(cost=c(1,10),gamma=c(0.5,0.9)) )),
+  EstimationTask(metrics="err",method=Holdout(nReps=10,hldSz=0.3))  )
+summary(res_sub) # Summary of the Workflow output with Error Statistics
+rankWorkflows(res_sub,1) # Choose top 2 Ranked Worked Flow estimates
+topPerformers(res_sub) # Choose Top Performing model
+plot(res_sub.std)
+#workflowVariants(learner=c("randomForest"),learner.pars=list(ntree=c(750,1000,2000))) before the ), cannot use predictor with more than 53
+
+#now trying std
+svm.train = scans.min.train[,-c(1,2,17)]
+svm.test = scans.min.test[,-c(1,2,17)]
+res_sub <- performanceEstimation(
+  PredTask(cf_std ~ .,svm.train),
+  c(workflowVariants(learner=c("svm"),learner.pars=list(cost=c(1,10),gamma=c(0.5,0.9)) ),
+    workflowVariants(learner=c("randomForest"),learner.pars=list(ntree=c(750,1000,2000))) ),
+  EstimationTask(metrics="err",method=Holdout(nReps=10,hldSz=0.3))  )
+summary(res_sub) # Summary of the Workflow output with Error Statistics
+rankWorkflows(res_sub,1) # Choose top 2 Ranked Worked Flow estimates
+topPerformers(res_sub) # Choose Top Performing model
+plot(res_sub.stdbin)
