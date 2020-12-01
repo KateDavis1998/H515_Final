@@ -12,6 +12,9 @@ library(rpart)
 library(rpart.plot)
 library(randomForest)
 library(e1071)
+#install.packages("parallelSVM")
+library(parallelSVM)
+library(parallel)
 
 #Set WD
 #setwd('/Users/paigescott/Documents/IUPUI/INFO-H515/Project') #Paige
@@ -314,8 +317,9 @@ table(predict=predict(svmr, svm.test), truth=svm.test$cf_stdbin) #test error
 (295+0)/nrow(svm.train) #test error rate of 0.01305
 
 
-head(svm.train)
+
 #Trying some SVM to predict nonbinary
+#clearly is not enough data to predict standard deviations
 svm.train = scans.min.train[,-c(1,2,17)]
 svm.test = scans.min.test[,-c(1,2,17)]
 
@@ -339,3 +343,76 @@ summary(svmr)
 predict=predict(svmr, svm.test) #test error
 xtab <- table(svm.test$cf_std, predict)
 xtab #also predicts everything as a 0
+
+
+
+#why not use subsampling for SVM?
+#using the parallelSVM library to speed up this process
+#trying cf_stdbin first
+
+#Linear
+svmparl <- parallelSVM(cf_stdbin~., data = svm.train[,-1],numberCores = detectCores(), kernel = "linear",
+                      scale = FALSE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
+                      cross = 10, seed = 1234)
+summary(svmparl)
+pred.train=predict(svmparl, svm.train) #train error
+table(pred.train, truth=svm.train$cf_stdbin) #train error
+(351)/nrow(svm.train) #train error rate of 0.0155
+pred.test=predict(svmparl, svm.test) #test error
+table(pred.test, truth=svm.test$cf_stdbin) #test error
+(155)/nrow(svm.train) #test error rate of 0.0068
+
+#Radial
+svmparr <- parallelSVM(cf_stdbin~., data = svm.train[,-1],numberCores = detectCores(), kernel = "radial",
+                       scale = TRUE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
+                       cross = 1, seed = 1234, gamma = 1)
+summary(svmparr)
+pred.train=predict(svmparr, svm.train) #train error
+table(pred.train, truth=svm.train$cf_stdbin) #train error
+(21907+1)/nrow(svm.train) #train error rate of 0.9695
+pred.test=predict(svmparr, svm.test) #test error
+table(pred.test, truth=svm.test$cf_stdbin) #test error
+(9388+1)/nrow(svm.train) #test error rate of 0.4154
+
+#Polynomial
+svmparp <- parallelSVM(cf_stdbin~., data = svm.train[,-1],numberCores = detectCores(), kernel = "polynomial",
+                       scale = TRUE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
+                       cross = 1, seed = 1)
+summary(svmparp)
+pred.train=predict(svmparp, svm.train) #train error
+table(pred.train, truth=svm.train$cf_stdbin) #train error
+(21907+1)/nrow(svm.train) #train error rate of 0.9695
+pred.test=predict(svmparp, svm.test) #test error
+table(pred.test, truth=svm.test$cf_stdbin) #test error
+(9388+1)/nrow(svm.train) #test error rate of 0.4154
+
+
+#trying cf_std 
+#also doesn't work
+#Linear
+svmparl <- parallelSVM(cf_std~., data = svm.train[,-1],numberCores = detectCores(), kernel = "linear",
+                       scale = FALSE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
+                       cross = 10, seed = 1234)
+summary(svmparl)
+pred = predict(svmparl, svm.test) #test error
+xtab <- table(svm.test$cf_std, pred)
+xtab #all predicted as 0
+
+
+#Radial
+svmparr <- parallelSVM(cf_std~., data = svm.train[,-1],numberCores = detectCores(), kernel = "radial",
+                       scale = TRUE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
+                       cross = 1, seed = 1234, gamma = 1)
+summary(svmparr)
+pred = predict(svmparr, svm.test) #test error
+xtab <- table(svm.test$cf_std, pred)
+xtab #all predicted as 0
+
+#Polynomial
+svmparp <- parallelSVM(cf_std~., data = svm.train[,-1],numberCores = detectCores(), kernel = "polynomial",
+                       scale = TRUE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
+                       cross = 1, seed = 1)
+summary(svmparp)
+pred = predict(svmparp, svm.test) #test error
+xtab <- table(svm.test$cf_std, pred)
+xtab #all predicted as 0
