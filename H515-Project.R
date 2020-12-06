@@ -15,6 +15,7 @@ library(e1071)
 #install.packages("parallelSVM")
 library(parallelSVM)
 library(parallel)
+require(MASS)
 
 #Set WD
 #setwd('/Users/paigescott/Documents/IUPUI/INFO-H515/Project') #Paige
@@ -130,6 +131,8 @@ scans.min.test = scans.min[-split,]
 #some basic regression
 #note had to remove examcode/radiologist as it creates too many factors..
 logscans = glm(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority+orgcode+eio+sect, data=scans.min.train, family="binomial")
+stepwise(logscans, direction="forward/backward")
+
 summary(logscans)
 pred = predict(logscans, newdata=scans.min.test, type="response")
 threshPred = (pred > .4) 
@@ -275,6 +278,7 @@ sqrt(mean(abs(error.rf))) #OSMAE 0.3473746
 
 
 #Trying some SVM to predict binary
+head(scans.min.train)
 svm.train = scans.min.train[,-c(1,2,18)]
 svm.test = scans.min.test[,-c(1,2,18)]
 
