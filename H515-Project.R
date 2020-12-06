@@ -15,7 +15,7 @@ library(e1071)
 #install.packages("parallelSVM")
 library(parallelSVM)
 library(parallel)
-require(MASS)
+library(MASS)
 
 #Set WD
 #setwd('/Users/paigescott/Documents/IUPUI/INFO-H515/Project') #Paige
@@ -122,6 +122,7 @@ scans$cf_stdbin <- factor(scans$cf_stdbin)
 scans.min <- scans[,-c(1,2,3,5,13)]
 head(scans.min)
 
+
 #splitting into test/train
 set.seed(1234)
 split = createDataPartition(scans.min$cf_stdbin, p = 0.7, list = FALSE)
@@ -130,9 +131,7 @@ scans.min.test = scans.min[-split,]
 
 #some basic regression
 #note had to remove examcode/radiologist as it creates too many factors..
-logscans = glm(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority+orgcode+eio+sect, data=scans.min.train, family="binomial")
-stepwise(logscans, direction="forward/backward")
-
+logscans = glm(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+as.numeric(priority)+orgcode+eio+sect, data=scans.min.train, family="binomial")
 summary(logscans)
 pred = predict(logscans, newdata=scans.min.test, type="response")
 threshPred = (pred > .4) 
@@ -144,6 +143,39 @@ truePos = confusion.matrix[2,2]/sum(confusion.matrix[2,])
 truePos #0.220339
 falsePos = confusion.matrix[1,2]/sum(confusion.matrix[1,])
 falsePos #0.005538986
+
+#Stepwise - https://bookdown.org/egarpor/PM-UC3M/lm-ii-modsel.html
+logscans.full = glm(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+as.numeric(priority)+orgcode+eio+sect, data=scans.min.train, family="binomial")
+logscans.min = glm(cf_stdbin ~ 1, data=scans.min.train, family="binomial")
+step.reg = stepAIC(logscans.min, direction = "both", scope = list(lower = logscans.min, upper = logscans.full), k = log(nrow(scans)), trace=TRUE)
+summary(step.reg)
+pred = predict(step.reg, newdata=scans.min.test, type="response")
+threshPred = (pred > .4) 
+confusion.matrix = table(scans.min.test$cf_stdbin, threshPred)
+confusion.matrix
+accuracy = sum(diag(confusion.matrix)) / sum(confusion.matrix)
+accuracy #0.9702572
+truePos = confusion.matrix[2,2]/sum(confusion.matrix[2,])
+truePos #0.2135593
+falsePos = confusion.matrix[1,2]/sum(confusion.matrix[1,])
+falsePos #0.005965062
+
+#Stepwise (all numeric) - https://bookdown.org/egarpor/PM-UC3M/lm-ii-modsel.html
+logscans.full = glm(cf_stdbin ~ as.numeric(shift)+hr_cmpl+hr_dict+dow_cmpl+as.numeric(resdict)+as.numeric(modality)+
+                      as.numeric(priority)+as.numeric(orgcode)+as.numeric(eio)+as.numeric(sect)+as.numeric(radiologist)+as.numeric(examcode), data=scans.min.train, family="binomial")
+logscans.min = glm(cf_stdbin ~ 1, data=scans.min.train, family="binomial")
+step.reg = stepAIC(logscans.min, direction = "both", scope = list(lower = logscans.min, upper = logscans.full), k = log(nrow(scans)), trace=TRUE)
+summary(step.reg)
+pred = predict(step.reg, newdata=scans.min.test, type="response")
+threshPred = (pred > .4) 
+confusion.matrix = table(scans.min.test$cf_stdbin, threshPred)
+confusion.matrix
+accuracy = sum(diag(confusion.matrix)) / sum(confusion.matrix)
+accuracy #0.969431
+truePos = confusion.matrix[2,2]/sum(confusion.matrix[2,])
+truePos #0.05762712
+falsePos = confusion.matrix[1,2]/sum(confusion.matrix[1,])
+falsePos #0.001917341
 
 
 #Lasso/Ridge setup
