@@ -27,6 +27,7 @@ scans = read.csv("studies.csv")
 head(scans)
 dim(scans)
 summary(scans)
+count(scans)
 
 #Set fields as factors
 #shift, priority, resdict, examcode, modality, orgcode, eio, sect, radiologist
@@ -97,7 +98,7 @@ cf_hours.mean = mean(scans$cf_hrs)
 cf_hours.std = sd(scans$cf_hrs)
 scans$cf_std <- with(scans, (abs(cf_hrs - cf_hours.mean))%/%cf_hours.std)
 summary(scans$cf_std)
-hist(scans$cf_std,
+hist(as.numeric(scans$cf_std),
      main="CF_STD", 
      xlab="cf_std",
      breaks=60)
@@ -135,11 +136,11 @@ threshPred = (pred > .4)
 confusion.matrix = table(scans.min.test$cf_stdbin, threshPred)
 confusion.matrix
 accuracy = sum(diag(confusion.matrix)) / sum(confusion.matrix)
-accuracy
+accuracy #0.9708768
 truePos = confusion.matrix[2,2]/sum(confusion.matrix[2,])
-truePos
+truePos #0.220339
 falsePos = confusion.matrix[1,2]/sum(confusion.matrix[1,])
-falsePos
+falsePos #0.005538986
 
 
 #Lasso/Ridge setup
@@ -225,10 +226,10 @@ train.cart$bestTune
 mod.cart = train.cart$finalModel
 pred.cart = predict(mod.cart, newdata=scans.min.test)
 r2.cart = 1-sum((as.numeric(y.test) - pred.cart)^2)/sum((as.numeric(y.test) - mean(as.numeric(y.train)))^2)
-r2.cart
+r2.cart #-35.96774 binary
 error.cart = as.numeric(y.test) - pred.cart
-sqrt(mean(error.cart^2)) #OSRMSE
-sqrt(mean(abs(error.cart))) #OSMAE
+sqrt(mean(error.cart^2)) #OSRMSE 0.7388973 binary
+sqrt(mean(abs(error.cart))) #OSMAE 0.7283308 binary
 
 prp(mod.cart, varlen=0)
 mod.cart
@@ -282,16 +283,16 @@ svml <- svm(cf_stdbin~., data = svm.train, kernel = "linear",
             cost = 0.01, scale = FALSE)
 summary(svml)
 table(predict=predict(svml, svm.train), truth=svm.train$cf_stdbin) #train error
-(0)/nrow(svm.train) #train error rate of 0?
+(169)/nrow(svm.train) #train error rate of 0.007478869
 table(predict=predict(svml, svm.test), truth=svm.test$cf_stdbin) #test error
-(0)/nrow(svm.train) #test error rate of 0?
+(72)/nrow(svm.train) #test error rate of 0.003186264
 
 #the cost=0.01 model had 0 train/test errors but below is code for tuning in case I really messed up above
 #this takes a long time to run
 tuneModels<-tune(svm,cf_stdbin~., data = svm.train, kernel = "linear",
                  ranges=list(cost=c(.01,.05,.1,.5,1,2,3,4,5,6,7,8,9,10)))
 summary(tuneModels)
-tuneModels$best.model #all models have 0 error
+tuneModels$best.model #best model cost=2
 bestLin=tuneModels$best.model
 table(predict=predict(bestLin, svm.train), truth=svm.train$cf_stdbin) #train error
 (0)/nrow(svm.train) #train error rate 0
@@ -354,15 +355,15 @@ svm.test = scans.min.test[,-c(1,2,18)]
 
 #Linear
 svmparl <- parallelSVM(cf_stdbin~., data = svm.train[,-1],numberCores = detectCores(), kernel = "linear",
-                       scale = FALSE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
-                       cross = 10, seed = 1234)
+                       scale = FALSE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = 2,
+                       cross = 100, seed = 1234)
 summary(svmparl)
 pred.train=predict(svmparl, svm.train) #train error
 table(pred.train, truth=svm.train$cf_stdbin) #train error
-(351)/nrow(svm.train) #train error rate of 0.0155
+(17)/nrow(svm.train) #train error rate of (cost=.01, cross=10, 0.0155) (cost=2, cross=10, 0.0007080586) (cost=2, cross=100, 0.0007523123) 
 pred.test=predict(svmparl, svm.test) #test error
 table(pred.test, truth=svm.test$cf_stdbin) #test error
-(155)/nrow(svm.train) #test error rate of 0.0068
+(8)/nrow(svm.train) #test error rate of (cost=.01, cross=10, 0.0068) (cost=2, cross=10, 0.0003540293) (cost=2, cross=100, 0.0003540293)
 
 #Radial
 svmparr <- parallelSVM(cf_stdbin~., data = svm.train[,-1],numberCores = detectCores(), kernel = "radial",
@@ -419,38 +420,3 @@ pred = predict(svmparp, svm.test) #test error
 xtab <- table(svm.test$cf_std, pred)
 xtab #all predicted as 0
 
-
-
-#https://rstudio-pubs-static.s3.amazonaws.com/297865_ad1319133fce473e83220af6c7e97b30.html
-#install.packages("performanceEstimation")
-#install.packages("DMwR")
-library(performanceEstimation)
-library(lattice)
-library(DMwR)
-
-#trying stdbin first
-svm.train = scans.min.train[,-c(1,2,18)]
-svm.test = scans.min.test[,-c(1,2,18)]
-
-res_sub <- performanceEstimation(
-  PredTask(cf_stdbin ~ .,svm.train),
-  c(workflowVariants(learner=c("svm"),learner.pars=list(cost=c(1,10),gamma=c(0.5,0.9)) )),
-  EstimationTask(metrics="err",method=Holdout(nReps=10,hldSz=0.3))  )
-summary(res_sub) # Summary of the Workflow output with Error Statistics
-rankWorkflows(res_sub,1) # Choose top 2 Ranked Worked Flow estimates
-topPerformers(res_sub) # Choose Top Performing model
-plot(res_sub.std)
-#workflowVariants(learner=c("randomForest"),learner.pars=list(ntree=c(750,1000,2000))) before the ), cannot use predictor with more than 53
-
-#now trying std
-svm.train = scans.min.train[,-c(1,2,17)]
-svm.test = scans.min.test[,-c(1,2,17)]
-res_sub <- performanceEstimation(
-  PredTask(cf_std ~ .,svm.train),
-  c(workflowVariants(learner=c("svm"),learner.pars=list(cost=c(1,10),gamma=c(0.5,0.9)) ),
-    workflowVariants(learner=c("randomForest"),learner.pars=list(ntree=c(750,1000,2000))) ),
-  EstimationTask(metrics="err",method=Holdout(nReps=10,hldSz=0.3))  )
-summary(res_sub) # Summary of the Workflow output with Error Statistics
-rankWorkflows(res_sub,1) # Choose top 2 Ranked Worked Flow estimates
-topPerformers(res_sub) # Choose Top Performing model
-plot(res_sub.stdbin)
