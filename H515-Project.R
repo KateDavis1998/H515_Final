@@ -426,6 +426,7 @@ table(pred.test, truth=svm.test$cf_stdbin) #test error
 (9388+1)/nrow(svm.train) #test error rate of 0.4154
 
 
+
 #trying cf_std 
 #also doesn't work
 #Linear
@@ -433,7 +434,7 @@ svmparl <- parallelSVM(cf_std~., data = svm.train[,-1],numberCores = detectCores
                        scale = FALSE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
                        cross = 10, seed = 1234)
 summary(svmparl)
-pred = predict(svmparl, svm.test) #test error
+pred.l = predict(svmparl, svm.test) #test error
 xtab <- table(svm.test$cf_std, pred)
 xtab #all predicted as 0
 
@@ -443,7 +444,7 @@ svmparr <- parallelSVM(cf_std~., data = svm.train[,-1],numberCores = detectCores
                        scale = TRUE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
                        cross = 1, seed = 1234, gamma = 1)
 summary(svmparr)
-pred = predict(svmparr, svm.test) #test error
+pred.r = predict(svmparr, svm.test) #test error
 xtab <- table(svm.test$cf_std, pred)
 xtab #all predicted as 0
 
@@ -452,7 +453,28 @@ svmparp <- parallelSVM(cf_std~., data = svm.train[,-1],numberCores = detectCores
                        scale = TRUE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = .01,
                        cross = 1, seed = 1)
 summary(svmparp)
-pred = predict(svmparp, svm.test) #test error
+pred.p = predict(svmparp, svm.test) #test error
 xtab <- table(svm.test$cf_std, pred)
 xtab #all predicted as 0
 
+library(MLeval)
+library(caret)
+
+#(1) Logistic Regression 
+#(2) LASSO 
+#(3) Ridge 
+#(4) CART 
+#(5) Random Forrest 
+#(6) Linear Support Vector Machines 
+#(7) Radial Support Vector Machines 
+#(8) and Polynomial Support Vector Machines.
+
+#Tutorial for putting muluple ROC in one plot
+
+res <- evalm(list(pred, lasso.pred, ridge.pred, pred.cart, pred.rf ),gnames=c('Logistic Regression','LASSO','Ridge', "Cart", 'Random Forrest'))
+print("debug")
+res
+
+#plot 2 
+res2 <- evalm(list(pred.l,pred.r,pred.p),gnames=c('Linear SVM','Radial SVM', 'Polynomial SVM'))
+res2
