@@ -311,38 +311,38 @@ sqrt(mean(abs(error.rf))) #OSMAE 0.3473746
 
 #Trying some SVM to predict binary
 head(scans.min.train)
-svm.train = scans.min.train[,-c(1,2,18)]
-svm.test = scans.min.test[,-c(1,2,18)]
-
+svm.train = scans.min.train[,-c(1,2,16)]
+svm.test = scans.min.test[,-c(1,2,16)]
+head(svm.train)
 #linear
 svml <- svm(cf_stdbin~., data = svm.train, kernel = "linear",
             cost = 0.01, scale = FALSE)
 summary(svml)
 table(predict=predict(svml, svm.train), truth=svm.train$cf_stdbin) #train error
-(169)/nrow(svm.train) #train error rate of 0.007478869
+(690)/nrow(svm.train) #train error rate of 0.03053503
 table(predict=predict(svml, svm.test), truth=svm.test$cf_stdbin) #test error
-(72)/nrow(svm.train) #test error rate of 0.003186264
+(295)/nrow(svm.train) #test error rate of 0.01305483
 
 #the cost=0.01 model had 0 train/test errors but below is code for tuning in case I really messed up above
 #this takes a long time to run
 tuneModels<-tune(svm,cf_stdbin~., data = svm.train, kernel = "linear",
                  ranges=list(cost=c(.01,.05,.1,.5,1,2,3,4,5,6,7,8,9,10)))
 summary(tuneModels)
-tuneModels$best.model #best model cost=2
+tuneModels$best.model #best model cost=0.5
 bestLin=tuneModels$best.model
 table(predict=predict(bestLin, svm.train), truth=svm.train$cf_stdbin) #train error
-(0)/nrow(svm.train) #train error rate 0
+(657+12)/nrow(svm.train) #train error rate 0.0296057
 table(predict=predict(bestLin, svm.test), truth=svm.test$cf_stdbin) #test error
-(0)/nrow(svm.test) #test error rate 0
+(285+7)/nrow(svm.test) #test error rate 0.03015594
 
 #poly
 svmp <- svm(cf_stdbin~., data = svm.train, kernel = "polynomial",
             cost = 0.01, scale = FALSE)
 summary(svmp)
 table(predict=predict(svmp, svm.train), truth=svm.train$cf_stdbin) #train error
-(685+0)/nrow(svm.train) #train error rate of 0.0303
+(690+0)/nrow(svm.train) #train error rate of 0.03053503
 table(predict=predict(svmp, svm.test), truth=svm.test$cf_stdbin) #test error
-(293+0)/nrow(svm.train) #test error rate of 0.129
+(295+0)/nrow(svm.train) #test error rate of 0.01305483
 
 #radial
 svmr <- svm(cf_stdbin~., data = svm.train, kernel = "radial",
@@ -359,7 +359,7 @@ table(predict=predict(svmr, svm.test), truth=svm.test$cf_stdbin) #test error
 #clearly is not enough data to predict standard deviations
 svm.train = scans.min.train[,-c(1,2,17)]
 svm.test = scans.min.test[,-c(1,2,17)]
-
+head(svm.train)
 #linear
 svml <- svm(cf_std~., data = svm.train, kernel = "linear", method="C-classification", cost = 0.01, scale = FALSE)
 summary(svml)
@@ -386,13 +386,13 @@ xtab #also predicts everything as a 0
 #why not use subsampling for SVM?
 #using the parallelSVM library to speed up this process
 #trying cf_stdbin first
-svm.train = scans.min.train[,-c(1,2,18)]
-svm.test = scans.min.test[,-c(1,2,18)]
+svm.train = scans.min.train[,-c(1,2,16)]
+svm.test = scans.min.test[,-c(1,2,16)]
 
 #Linear
 svmparl <- parallelSVM(cf_stdbin~., data = svm.train[,-1],numberCores = detectCores(), kernel = "linear",
                        scale = FALSE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = 2,
-                       cross = 100, seed = 1234)
+                       cross = 10, seed = 1234)
 summary(svmparl)
 pred.train=predict(svmparl, svm.train) #train error
 table(pred.train, truth=svm.train$cf_stdbin) #train error
@@ -456,3 +456,38 @@ pred = predict(svmparp, svm.test) #test error
 xtab <- table(svm.test$cf_std, pred)
 xtab #all predicted as 0
 
+
+
+
+
+#redoing with a model with less columns to try to reduce number of inputs
+#this takes a long time to run
+set.seed(555)
+head(scans.min.train) #4, 6, 7, 9, 10, 11, 12
+svm.train = scans.min.train[,-c(1,2,16)]
+svm.test = scans.min.test[,-c(1,2,16)]
+#svm.train = scans.min.train[,-c(1,2,5,8,15,18)]
+#svm.test = scans.min.test[,-c(1,2,5,8,15,18)]
+tuneModels<-tune(svm,cf_stdbin~., data = svm.train, kernel = "linear",
+                 ranges=list(cost=c(.01,.05,.1,.5,1,2,3,4,5,6,7,8,9,10)))
+summary(tuneModels)
+tuneModels$best.model #best model cost=2
+bestLin=tuneModels$best.model
+table(predict=predict(bestLin, svm.train), truth=svm.train$cf_stdbin) #train error
+(0)/nrow(svm.train) #train error rate 0
+table(predict=predict(bestLin, svm.test), truth=svm.test$cf_stdbin) #test error
+(6)/nrow(svm.test) #test error rate 0.0006196427
+
+
+#using the parallelSVM library to speed up this process
+#Linear
+svmparl <- parallelSVM(cf_stdbin~., data = svm.train,numberCores = detectCores(), kernel = "linear",
+                       scale = FALSE, type = "C-classification", samplingSize = 0.4, probability = TRUE, cost = 2,
+                       cross = 10, seed = 1234)
+summary(svmparl)
+pred.train=predict(svmparl, svm.train) #train error
+table(pred.train, truth=svm.train$cf_stdbin) #train error
+(18)/nrow(svm.train) #train error rate of (cost=2, cross=10, 0.0007965659)
+pred.test=predict(svmparl, svm.test) #test error
+table(pred.test, truth=svm.test$cf_stdbin) #test error
+(7)/nrow(svm.train) #test error rate of (cost=2, cross=10, 0.0003097756)
