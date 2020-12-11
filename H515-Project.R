@@ -19,7 +19,7 @@ library(MASS)
 
 #Set WD
 #setwd('/Users/paigescott/Documents/IUPUI/INFO-H515/Project') #Paige
-setwd('C:/Filing/My Docs/GitHub/H515_Final') #John
+setwd('C:/Users/burns/OneDrive/Documents/GitHub/H515_Final') #John
 
 #Import Data
 scans = read.csv("studies.csv")
@@ -144,7 +144,16 @@ truePos #0.220339
 falsePos = confusion.matrix[1,2]/sum(confusion.matrix[1,])
 falsePos #0.005538986
 
-#Stepwise - https://bookdown.org/egarpor/PM-UC3M/lm-ii-modsel.html
+#AUC for basic regression
+pred_r <- prediction(pred, scans.min.test$cf_stdbin)
+perf <- performance(pred_r, 'tpr', 'fpr')
+plot(perf, main = "ROC Curve Basic Regression", colorize = T)
+abline(a = 0, b = 1)
+auc <- performance(pred_r, measure = "auc")
+auc <- auc@y.values[[1]]
+auc #0.9283295
+
+#Stepwise factor - https://bookdown.org/egarpor/PM-UC3M/lm-ii-modsel.html
 logscans.full = glm(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+as.numeric(priority)+orgcode+eio+sect, data=scans.min.train, family="binomial")
 logscans.min = glm(cf_stdbin ~ 1, data=scans.min.train, family="binomial")
 step.reg = stepAIC(logscans.min, direction = "both", scope = list(lower = logscans.min, upper = logscans.full), k = log(nrow(scans)), trace=TRUE)
@@ -159,6 +168,15 @@ truePos = confusion.matrix[2,2]/sum(confusion.matrix[2,])
 truePos #0.2135593
 falsePos = confusion.matrix[1,2]/sum(confusion.matrix[1,])
 falsePos #0.005965062
+
+#AUC for stepwise factor regression
+pred_r <- prediction(pred, scans.min.test$cf_stdbin)
+perf <- performance(pred_r, 'tpr', 'fpr')
+plot(perf, main = "ROC Curve Stepwise Factor", colorize = T)
+abline(a = 0, b = 1)
+auc <- performance(pred_r, measure = "auc")
+auc <- auc@y.values[[1]]
+auc #0.9273478
 
 #Stepwise (all numeric) - https://bookdown.org/egarpor/PM-UC3M/lm-ii-modsel.html
 logscans.full = glm(cf_stdbin ~ as.numeric(shift)+hr_cmpl+hr_dict+dow_cmpl+as.numeric(resdict)+as.numeric(modality)+
@@ -177,26 +195,34 @@ truePos #0.05762712
 falsePos = confusion.matrix[1,2]/sum(confusion.matrix[1,])
 falsePos #0.001917341
 
+#AUC for stepwise numeric regression
+pred_r <- prediction(pred, scans.min.test$cf_stdbin)
+perf <- performance(pred_r, 'tpr', 'fpr')
+plot(perf, main = "ROC Curve Stepwise Numeric", colorize = T)
+abline(a = 0, b = 1)
+auc <- performance(pred_r, measure = "auc")
+auc <- auc@y.values[[1]]
+auc #0.9066414
 
 #Lasso/Ridge setup
 #note - these take a long time to run, and have negative osr^2 
-x.train=model.matrix(cf_std ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+examcode+modality+priority+orgcode+eio+sect+radiologist,data=scans.min.train)
-#x.train=model.matrix(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority+orgcode+eio+sect,data=scans.min.train)
-y.train=scans.min.train$cf_std
-x.test=model.matrix(cf_std ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+examcode+modality+priority+orgcode+eio+sect+radiologist,data=scans.min.test) 
-#x.test=model.matrix(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority+orgcode+eio+sect,data=scans.min.test) 
-y.test=scans.min.test$cf_std
+#x.train=model.matrix(cf_std ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+examcode+modality+priority+orgcode+eio+sect+radiologist,data=scans.min.train)
+x.train=model.matrix(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority+orgcode+eio+sect,data=scans.min.train)
+y.train=scans.min.train$cf_stdbin
+#x.test=model.matrix(cf_std ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+examcode+modality+priority+orgcode+eio+sect+radiologist,data=scans.min.test) 
+x.test=model.matrix(cf_stdbin ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority+orgcode+eio+sect,data=scans.min.test) 
+y.test=scans.min.test$cf_stdbin
 all.lambdas <- c(exp(seq(15, -10, -.1)))
 
 #Ridge use binomial for binary predictor otherwise don't
-#ridge.cv=cv.glmnet(x = x.train, y = y.train, alpha=0, lambda=all.lambdas, family = "binomial")
 ridge.cv=cv.glmnet(x = x.train, y = y.train, alpha=0, lambda=all.lambdas, family = "binomial")
+#ridge.cv=cv.glmnet(x = x.train, y = y.train, alpha=0, lambda=all.lambdas, family = "multinomial")
 plot(ridge.cv)
 best.lambda.ridge <- ridge.cv$lambda.min
 ridge.mse.min <- ridge.cv$cvm[ridge.cv$lambda == ridge.cv$lambda.min]
 ridge.mse.min
 
-ridge.tr=glmnet(x = x.train, y = y.train, alpha=0, lambda=best.lambda.ridge)
+ridge.tr=glmnet(x = x.train, y = y.train, alpha=0, lambda=best.lambda.ridge, family = "binomial")
 ridge.tr$beta # all nonzero
 ridge.r2 = ridge.tr$dev.ratio
 ridge.r2
@@ -318,10 +344,21 @@ head(svm.train)
 svml <- svm(cf_stdbin~., data = svm.train, kernel = "linear",
             cost = 0.01, scale = FALSE)
 summary(svml)
-table(predict=predict(svml, svm.train), truth=svm.train$cf_stdbin) #train error
+pred.train=predict(svml, svm.train)
+table(pred.train, truth=svm.train$cf_stdbin) #train error
 (690)/nrow(svm.train) #train error rate of 0.03053503
-table(predict=predict(svml, svm.test), truth=svm.test$cf_stdbin) #test error
+pred.test=predict(svml, svm.test)
+table(pred.test, truth=svm.test$cf_stdbin) #test error
 (295)/nrow(svm.train) #test error rate of 0.01305483
+
+#AUC for svm linear
+pred_r <- prediction(as.numeric(pred.test), svm.test$cf_stdbin)
+perf <- performance(pred_r, 'tpr', 'fpr')
+plot(perf, main = "ROC Curve SVM Linear", colorize = T)
+abline(a = 0, b = 1)
+auc <- performance(pred_r, measure = "auc")
+auc <- auc@y.values[[1]]
+auc #0.5
 
 #the cost=0.01 model had 0 train/test errors but below is code for tuning in case I really messed up above
 #this takes a long time to run
