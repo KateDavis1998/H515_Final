@@ -16,13 +16,24 @@ library(e1071)
 library(parallelSVM)
 library(parallel)
 library(MASS)
+#install.packages("tidyverse")
+library(tidyverse)
+#install.packages("hrbrthemes")
+library(hrbrthemes)
+#install.packages("viridis")
+library(viridis)
+#install.packages("forcats")
+library(forcats)
+#install.packages("outliers")
+library(outliers)
+library(tibble)
 
 #Set WD
 #setwd('/Users/paigescott/Documents/IUPUI/INFO-H515/Project') #Paige
 setwd('C:/Users/burns/OneDrive/Documents/GitHub/H515_Final') #John
 
-#Import Data
-scans = read.csv("studies.csv")
+#Import Data: studies.csv for all, studies_no_outliers.csv for outliers removed
+scans = read.csv("studies_no_outliers.csv")
 
 #Dataset Structure
 head(scans)
@@ -42,46 +53,68 @@ scans$eio <- factor(scans$eio)
 scans$sect <- factor(scans$sect)
 scans$radiologist <- factor(scans$radiologist)
 
+#Analysis for Detecting Outliers & Extreme Outliers
+
+#Grubbs Test for impact of outliers
+  test_high <- grubbs.test(scans$cf_hrs)
+  test_low <- grubbs.test(scans$cf_hrs, opposite= TRUE)
+  test_high
+  test_low 
+  #High --> G = 58.42 U=0.933 (p-value <0.0001) 
+  #Low  --> G = 46.40 U=0.8942 (p-value <0.0001)
+  #Indicating our results are going to be impacted by outlier variables values (specifically cf_hrs= 1490.71, 12141.55, & -1173.95)
+  
+  #Rosner's Test to identify multiple outliers
+  #install.packages("EnvStats")
+  pdixon(p, 32228, type= 10, rev = FALSE)
+  
+  #Plot for Visualization
+  mod <- lm(cf_hrs ~ ., data=scans)
+  cooksd <- cooks.distance(mod)
+  plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+  abline(h = 4*mean(cooksd, na.rm=T), col="red")  # add cutoff line
+  text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  # add labels
+
 #fix fa_hrs to remove NULL
 scans$fa_hrs = as.numeric(scans$fa_hrs)
 
 #some plots
 #hist of cf_hours - adjusted b/c of outliers
 hist(scans$cf_hrs,
-     main="CF_HRS", 
-     xlab="cf_hrs",
-     xlim=c(0,150),
+     main="Figure 1: Distribution of Turnaround Times", 
+     xlab="Turnaround Time (Hours)", col="darkmagenta",
+     xlim=c(0,50),
      breaks=500)
 
 #boxplots of cf_hours by shift
 boxplot(cf_hrs ~ shift, 
-        data = scans, 
+        data = scans, at = c(1:3) , names = c("First Shift", "Second Shift", "Third Shift"),
         boxwex = .5, 
         border = "black", 
         col="gray",
-        main = "cf_hrs by shift",
-        ylab = "cf_hrs", 
-        xlab = "Shift")
+        main = "Figure 2: Turnaround (in Hours) by Practitioner Shift",
+        ylab = "Turnaround Time (Hours)")
 
 #boxplot of cf_hours by priority
 boxplot(cf_hrs ~ priority, 
-        data = scans, 
+        data = scans, at = c(0:5) , names = c("0 (Lowest)", "1 (Low)", "2 (Low-Mid)", "3 (Mid)" , "4 (Mid-High)" , "5 (High)"),
         boxwex = .5, 
         border = "black", 
         col="gray",
-        main = "cf_hrs by priority",
-        ylab = "cf_hrs", 
-        xlab = "Priority")
+        main = "Figure 3: Turnaround (in Hours) by Listed Priority Level",
+        ylab = "Turnaround Time (Hours)", 
+        xlab = "Priority Level")
+
 
 #boxplot of cf_hours by resdict
 boxplot(cf_hrs ~ resdict, 
-        data = scans, 
+        data = scans, at = c(0:1) , names = c("Practitioner", "Resident"),
         boxwex = .5, 
         border = "black", 
         col="gray",
-        main = "cf_hrs by resdict",
-        ylab = "cf_hrs", 
-        xlab = "resdict")
+        main = "Figure 4: Turnaround (in Hours) by Practitioner Training Level",
+        ylab = "Turnaround Time (Hours)", 
+        xlab = "Practitioner Training Level")
 
 #cf_hrs by orgcode
 boxplot(cf_hrs ~ orgcode, 
@@ -89,10 +122,37 @@ boxplot(cf_hrs ~ orgcode,
         boxwex = .5, 
         border = "black", 
         col="gray",
-        main = "cf_hrs by orgcode",
-        ylab = "cf_hrs", 
-        xlab = "orgcode")
+        main = "Figure 5: Turnaround (in Hours) by Organization",
+        ylab = "Turnaround Time (Hours)", 
+        xlab = "Organization Code")
 
+# cf_hrs by sect
+boxplot(cf_hrs ~ sect, 
+        data = scans, 
+        boxwex = .5, 
+        border = "black", 
+        col="gray",
+        main = "Figure 5: Turnaround (in Hours) by Organization",
+        ylab = "Turnaround Time (Hours)", 
+        xlab = "Organization Code")
+
+
+# Stratified Scatter Plots to show Turnaround Time by exam code between (Resident v. Practitioner ) & Sect
+  ggplot( scans , aes(x= examcode, y= cf_hrs)) + geom_point() + facet_grid(resdict ~ sect )
+  
+  # Change data rownames as a real column called 'carName'
+  data <- scans %>%
+    rownames_to_column(var="Exam Code")
+  
+  # Plot
+  ggplot(data, aes(x=examcode, y=cf_hrs)) +
+    geom_point() + 
+    geom_label( 
+      data=scans %>% filter(cf_hrs> 360.0 ), # Filter data first
+      aes(label= radiologist) , col="red",
+    )
+  
+  qfdas <- (22.05*5)+5.59
 
 #setting up Standard Deviation
 cf_hours.mean = mean(scans$cf_hrs)
@@ -346,10 +406,10 @@ svml <- svm(cf_stdbin~., data = svm.train, kernel = "linear",
 summary(svml)
 pred.train=predict(svml, svm.train)
 table(pred.train, truth=svm.train$cf_stdbin) #train error
-(690)/nrow(svm.train) #train error rate of 0.03053503
+(777)/nrow(svm.train) #train error rate of 0.03053503
 pred.test=predict(svml, svm.test)
 table(pred.test, truth=svm.test$cf_stdbin) #test error
-(295)/nrow(svm.train) #test error rate of 0.01305483
+(333)/nrow(svm.train) #test error rate of 0.01305483
 
 #AUC for svm linear
 pred_r <- prediction(as.numeric(pred.test), svm.test$cf_stdbin)
