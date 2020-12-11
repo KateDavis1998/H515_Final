@@ -133,6 +133,24 @@ logscans = glm(cf_hrs ~ shift+hr_cmpl+hr_dict+dow_cmpl+resdict+modality+priority
 summary(logscans)
 pred<-predict(logscans, newdata=scans.min.test)
 summary(pred)
+
+########
+#method i talked about, jyst tried it with logistic model manually
+#pred =  prediction(logscans, newdata=scans.min.test$cf_hours)
+#roc <- performance(pred, "tpr", "fpr")
+#plot(roc, colorize = T, lwd = 2)
+#abline(a = 0, b = 1)
+
+
+#Also tried this method of puttting all the curves into one plot, I took out the SVMs since I know 
+#we were still working through them
+
+#include 
+#library(MLeval)
+#res <- evalm(list(pred, lasso.pred, ridge.pred, pred.cart, pred.rf ),gnames=c('Logistic Regression','LASSO','Ridge', "Cart", 'Random Forrest'))
+#res
+
+#########
 SSE<-sum((pred-scans.min.test$cf_hrs)^2)
 SST<-sum((mean(scans.min.train$cf_hrs)-scans.min.test$cf_hrs)^2)
 OSR2<-1-SSE/SST
